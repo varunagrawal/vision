@@ -1,8 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/cuda/CUDAContext.h>
 
-#include <THC/THC.h>
-#include <THC/THCDeviceUtils.cuh>
+#include <ATen/cuda/CUDAApplyUtils.cuh>
 
 #include <vector>
 #include <iostream>
@@ -60,7 +59,7 @@ __global__ void nms_kernel(const int n_boxes, const float nms_overlap_thresh,
         t |= 1ULL << i;
       }
     }
-    const int col_blocks = THCCeilDiv(n_boxes, threadsPerBlock);
+    const int col_blocks = at::cuda::ATenCeilDiv(n_boxes, threadsPerBlock);
     dev_mask[cur_box_idx * col_blocks + col_start] = t;
   }
 }
@@ -74,20 +73,20 @@ at::Tensor nms_cuda(const at::Tensor boxes, const at::Tensor scores, float nms_o
 
   int boxes_num = boxes.size(0);
 
-  const int col_blocks = THCCeilDiv(boxes_num, threadsPerBlock);
+  const int col_blocks = at::cuda::ATenCeilDiv(boxes_num, threadsPerBlock);
 
   scalar_t* boxes_dev = boxes_sorted.data<scalar_t>();
 
-  THCState *state = at::globalContext().lazyInitCUDA(); // TODO replace with getTHCState
+  THCState *state = at::globalContext().lazyInitCUDA();
 
   unsigned long long* mask_dev = NULL;
-  //THCudaCheck(THCudaMalloc(state, (void**) &mask_dev,
+  //AT_CUDA_CHECK(THCudaMalloc(state, (void**) &mask_dev,
   //                      boxes_num * col_blocks * sizeof(unsigned long long)));
 
   mask_dev = (unsigned long long*) THCudaMalloc(state, boxes_num * col_blocks * sizeof(unsigned long long));
 
-  dim3 blocks(THCCeilDiv(boxes_num, threadsPerBlock),
-              THCCeilDiv(boxes_num, threadsPerBlock));
+  dim3 blocks(at::cuda::ATenCeilDiv(boxes_num, threadsPerBlock),
+              at::cuda::ATenCeilDiv(boxes_num, threadsPerBlock));
   dim3 threads(threadsPerBlock);
   nms_kernel<<<blocks, threads>>>(boxes_num,
                                   nms_overlap_thresh,
@@ -95,7 +94,7 @@ at::Tensor nms_cuda(const at::Tensor boxes, const at::Tensor scores, float nms_o
                                   mask_dev);
 
   std::vector<unsigned long long> mask_host(boxes_num * col_blocks);
-  THCudaCheck(cudaMemcpy(&mask_host[0],
+  AT_CUDA_CHECK(cudaMemcpy(&mask_host[0],
                         mask_dev,
                         sizeof(unsigned long long) * boxes_num * col_blocks,
                         cudaMemcpyDeviceToHost));

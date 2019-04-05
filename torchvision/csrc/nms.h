@@ -13,7 +13,7 @@ at::Tensor nms(const at::Tensor& dets,
   if (dets.type().is_cuda()) {
 #ifdef WITH_CUDA
     if (dets.numel() == 0)
-      return at::empty({0}, dets.options().dtype(at::kLong).device(at::kCUDA));
+      return at::empty({0}, dets.options().dtype(at::kFloat).device(at::kCUDA));
     return nms_cuda(dets, scores, threshold);
 #else
     AT_ERROR("Not compiled with GPU support");
